@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart BMS V13 — Real-Time Cloud Dashboard</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js for live trends -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Lucide icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <style>
+    @keyframes pulse-slow {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.96); }
+    }
+    .live-pulse { animation: pulse-slow 2s infinite ease-in-out; }
+    .glass-card {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(56, 189, 248, 0.12);
+    }
+    .glass-card:hover {
+      border-color: rgba(56, 189, 248, 0.35);
+      box-shadow: 0 0 24px rgba(56, 189, 248, 0.08);
+    }
+  </style>
+</head>
+<body class="bg-[#060913] text-slate-100 min-h-screen font-sans selection:bg-cyan-500 selection:text-white">
+
+  <!-- Navbar -->
+  <header class="border-b border-slate-800 bg-[#090d1a]/80 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+          <i data-lucide="zap" class="w-6 h-6 text-white"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-extrabold text-lg tracking-tight text-white">SMART BMS</span>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">V13 CLOUD</span>
+          </div>
+          <p class="text-xs text-slate-400">NiMH 12S Remote Telemetry Monitor</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <!-- Live heartbeat indicator -->
+        <div id="connectionPill" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold">
+          <span class="w-2 h-2 rounded-full bg-amber-400 live-pulse"></span>
+          <span id="connectionText">Connecting...</span>
+        </div>
+
+        <!-- Configure Database Button -->
+        <button onclick="openConfigModal()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition">
+          <i data-lucide="settings" class="w-4 h-4 text-cyan-400"></i>
+          <span class="hidden sm:inline">Firebase Setup</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+
+    <!-- Top Hero Section: Battery Level & Primary Telemetry -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Big Battery SOC Visual -->
+      <div class="glass-card rounded-2xl p-6 flex flex-col justify-between">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <i data-lucide="battery-charging" class="w-5 h-5 text-emerald-400"></i>
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Battery Charge (SOC)</span>
+          </div>
+          <span id="socBadge" class="text-xs px-2.5 py-1 rounded-full font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">HEALTHY</span>
+        </div>
+
+        <div class="my-4 text-center">
+          <div id="socValue" class="text-6xl font-black text-white tracking-tight">--%</div>
+          <p class="text-xs text-slate-400 mt-1">Estimated State of Charge</p>
+        </div>
+
+        <!-- Battery Capsule Gauge -->
+        <div class="w-full bg-slate-800/80 rounded-xl p-1.5 border border-slate-700 shadow-inner">
+          <div id="socBar" class="h-5 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-400 transition-all duration-700 ease-out" style="width: 0%"></div>
+        </div>
+        <div class="flex justify-between text-[11px] text-slate-500 font-semibold mt-2 px-1">
+          <span>0% (12.0V)</span>
+          <span>50%</span>
+          <span>100% (17.4V)</span>
+        </div>
+      </div>
+
+      <!-- Live Electrical Stats -->
+      <div class="lg:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-4">
+        
+        <!-- Voltage -->
+        <div class="glass-card rounded-2xl p-5 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-slate-400">
+            <span class="text-xs font-bold uppercase">Pack Voltage</span>
+            <i data-lucide="activity" class="w-4 h-4 text-cyan-400"></i>
+          </div>
+          <div class="my-3">
+            <span id="avgVoltage" class="text-3xl font-extrabold text-white">--</span>
+            <span class="text-sm font-semibold text-cyan-400"> V</span>
+          </div>
+          <div class="text-[11px] text-slate-400">Target: 17.40 V</div>
+        </div>
+
+        <!-- Charge Current -->
+        <div class="glass-card rounded-2xl p-5 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-slate-400">
+            <span class="text-xs font-bold uppercase">Charge Current</span>
+            <i data-lucide="arrow-down-circle" class="w-4 h-4 text-emerald-400"></i>
+          </div>
+          <div class="my-3">
+            <span id="avgCurrent" class="text-3xl font-extrabold text-white">--</span>
+            <span class="text-sm font-semibold text-emerald-400"> A</span>
+          </div>
+          <div class="text-[11px] text-slate-400" id="currentSub">Max Limit: 4.0 A</div>
+        </div>
+
+        <!-- Temperature -->
+        <div class="glass-card rounded-2xl p-5 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-slate-400">
+            <span class="text-xs font-bold uppercase">Battery Temp</span>
+            <i data-lucide="thermometer" class="w-4 h-4 text-amber-400"></i>
+          </div>
+          <div class="my-3">
+            <span id="avgTemp" class="text-3xl font-extrabold text-white">--</span>
+            <span class="text-sm font-semibold text-amber-400"> °C</span>
+          </div>
+          <div class="text-[11px] text-slate-400" id="tempSub">Safe Limit: 40°C</div>
+        </div>
+
+        <!-- Energy Wh -->
+        <div class="glass-card rounded-2xl p-5 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-slate-400">
+            <span class="text-xs font-bold uppercase">Energy Input</span>
+            <i data-lucide="gauge" class="w-4 h-4 text-purple-400"></i>
+          </div>
+          <div class="my-3">
+            <span id="energyWh" class="text-3xl font-extrabold text-white">--</span>
+            <span class="text-sm font-semibold text-purple-400"> Wh</span>
+          </div>
+          <div class="text-[11px] text-slate-400">Cumulative session</div>
+        </div>
+
+        <!-- PWM Duty -->
+        <div class="glass-card rounded-2xl p-5 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-slate-400">
+            <span class="text-xs font-bold uppercase">PWM Duty</span>
+            <i data-lucide="cpu" class="w-4 h-4 text-indigo-400"></i>
+          </div>
+          <div class="my-3">
+            <span id="avgPWM" class="text-3xl font-extrabold text-white">--</span>
+            <span class="text-sm font-semibold text-indigo-400"> %</span>
+          </div>
+          <div class="text-[11px] text-slate-400">LM2596 Buck Gate</div>
+        </div>
+
+        <!-- Charge Mode -->
+        <div class="glass-card rounded-2xl p-5 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-slate-400">
+            <span class="text-xs font-bold uppercase">Regulation</span>
+            <i data-lucide="sliders" class="w-4 h-4 text-pink-400"></i>
+          </div>
+          <div class="my-3">
+            <span id="chargeMode" class="text-2xl font-extrabold text-pink-400">LOCKED</span>
+          </div>
+          <div class="text-[11px] text-slate-400">CC / CV State</div>
+        </div>
+
+        <!-- Charge Time -->
+        <div class="glass-card rounded-2xl p-5 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-slate-400">
+            <span class="text-xs font-bold uppercase">Duration</span>
+            <i data-lucide="clock" class="w-4 h-4 text-blue-400"></i>
+          </div>
+          <div class="my-3">
+            <span id="chargeMinutes" class="text-3xl font-extrabold text-white">--</span>
+            <span class="text-sm font-semibold text-blue-400"> min</span>
+          </div>
+          <div class="text-[11px] text-slate-400">Active run time</div>
+        </div>
+
+        <!-- Fault & Diagnostics -->
+        <div class="glass-card rounded-2xl p-5 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-slate-400">
+            <span class="text-xs font-bold uppercase">Safety Status</span>
+            <i data-lucide="shield-check" class="w-4 h-4 text-emerald-400"></i>
+          </div>
+          <div class="my-3">
+            <span id="systemFaultBadge" class="text-xl font-bold text-emerald-400">NORMAL</span>
+          </div>
+          <div class="text-[11px] text-slate-400" id="faultDetail">0 Faults / 0 Warnings</div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Live Telemetry Charts (Chart.js) -->
+    <div class="glass-card rounded-2xl p-6">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+        <div>
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <i data-lucide="line-chart" class="w-5 h-5 text-cyan-400"></i>
+            Real-Time Telemetry Stream
+          </h2>
+          <p class="text-xs text-slate-400">Voltage (V) and Current (A) live progression</p>
+        </div>
+        <div class="flex items-center gap-3 text-xs font-semibold">
+          <div class="flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded-full bg-cyan-400"></span>
+            <span class="text-slate-300">Voltage (V)</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded-full bg-emerald-400"></span>
+            <span class="text-slate-300">Current (A)</span>
+          </div>
+        </div>
+      </div>
+      <div class="h-64 w-full">
+        <canvas id="telemetryChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Telemetry Inspector & Meta Info -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      
+      <div class="glass-card rounded-2xl p-6">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
+          <i data-lucide="server" class="w-4 h-4 text-cyan-400"></i>
+          Packet Payload Details
+        </h3>
+        <div class="space-y-3 text-xs">
+          <div class="flex justify-between border-b border-slate-800 pb-2">
+            <span class="text-slate-400">Timestamp:</span>
+            <span id="pktTime" class="font-mono text-cyan-300">--</span>
+          </div>
+          <div class="flex justify-between border-b border-slate-800 pb-2">
+            <span class="text-slate-400">Voltage Bounds:</span>
+            <span id="pktVBounds" class="font-mono text-slate-200">Min: --V | Max: --V</span>
+          </div>
+          <div class="flex justify-between border-b border-slate-800 pb-2">
+            <span class="text-slate-400">Temperature Rise:</span>
+            <span id="pktTempRise" class="font-mono text-slate-200">-- °C</span>
+          </div>
+          <div class="flex justify-between border-b border-slate-800 pb-2">
+            <span class="text-slate-400">Max Voltage Error:</span>
+            <span id="pktVErr" class="font-mono text-slate-200">-- V</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Firmware Build:</span>
+            <span id="pktFw" class="font-mono text-emerald-400">V13</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card rounded-2xl p-6">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
+          <i data-lucide="cloud" class="w-4 h-4 text-emerald-400"></i>
+          How It Works
+        </h3>
+        <ol class="list-decimal list-inside text-xs text-slate-300 space-y-2 leading-relaxed">
+          <li>The ESP32 connects to Wi-Fi and accumulates high-accuracy readings every second.</li>
+          <li>Every <b>5 seconds</b>, Core 0 transmits a live snapshot to your Firebase Realtime Database.</li>
+          <li>This web app listens in real-time via WebSocket and updates your screen with zero latency!</li>
+          <li>You can bookmark this page or deploy it to <b>GitHub Pages</b> or <b>Vercel</b> to check your battery from anywhere in the world.</li>
+        </ol>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Setup Modal (Database URL Configurator) -->
+  <div id="configModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="font-bold text-lg text-white flex items-center gap-2">
+          <i data-lucide="database" class="w-5 h-5 text-cyan-400"></i>
+          Connect Firebase Database
+        </h3>
+        <button onclick="closeConfigModal()" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <div class="space-y-4 text-xs text-slate-300">
+        <p>Enter your Firebase Realtime Database URL. It typically looks like: <br>
+          <code class="text-cyan-400 bg-slate-800 px-2 py-0.5 rounded mt-1 inline-block">https://your-project-id-default-rtdb.firebaseio.com</code>
+        </p>
+        
+        <div>
+          <label class="block font-semibold text-slate-300 mb-1">Firebase Database URL</label>
+          <input id="inputDbUrl" type="url" placeholder="https://your-project.firebaseio.com" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-cyan-500">
+        </div>
+
+        <div class="p-3 rounded-lg bg-cyan-950/30 border border-cyan-800/40 text-cyan-200">
+          Make sure you also pasted this exact same URL into your ESP32's <code class="font-bold text-white">include/Cloud.h</code> file as <code class="font-bold text-white">FIREBASE_RTDB_URL</code>!
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-3 pt-2">
+        <button onclick="closeConfigModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">Cancel</button>
+        <button onclick="saveConfig()" class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white">Save & Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Application Logic -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+    lucide.createIcons();
+
+    // Chart.js Setup
+    const ctx = document.getElementById('telemetryChart').getContext('2d');
+    const maxPoints = 25;
+    const telemetryChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'Voltage (V)',
+            borderColor: '#38bdf8',
+            backgroundColor: 'rgba(56, 189, 248, 0.1)',
+            data: [],
+            yAxisID: 'y',
+            tension: 0.35,
+            borderWidth: 2,
+            pointRadius: 2
+          },
+          {
+            label: 'Current (A)',
+            borderColor: '#34d399',
+            backgroundColor: 'rgba(52, 211, 153, 0.1)',
+            data: [],
+            yAxisID: 'y1',
+            tension: 0.35,
+            borderWidth: 2,
+            pointRadius: 2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            grid: { color: 'rgba(255, 255, 255, 0.04)' },
+            ticks: { color: '#64748b', font: { size: 10 } }
+          },
+          y: {
+            type: 'linear',
+            position: 'left',
+            grid: { color: 'rgba(255, 255, 255, 0.04)' },
+            ticks: { color: '#38bdf8', font: { size: 10 } },
+            suggestedMin: 12,
+            suggestedMax: 18
+          },
+          y1: {
+            type: 'linear',
+            position: 'right',
+            grid: { drawOnChartArea: false },
+            ticks: { color: '#34d399', font: { size: 10 } },
+            suggestedMin: 0,
+            suggestedMax: 4
+          }
+        },
+        plugins: {
+          legend: { display: false }
+        }
+      }
+    });
+
+    // Pre-configured with your Firebase Realtime Database
+    const DEFAULT_FIREBASE_URL = "https://smart-bms-a7380-default-rtdb.asia-southeast1.firebasedatabase.app";
+    const savedUrl = localStorage.getItem('bms_firebase_url') || DEFAULT_FIREBASE_URL;
+    document.getElementById('inputDbUrl').value = savedUrl;
+
+    let lastPacketTimestamp = 0;
+
+    function initFirebase(url) {
+      if (!url || url.includes("your-project-id") || url.length < 15) {
+        document.getElementById('connectionPill').className = "flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold";
+        document.getElementById('connectionText').innerText = "Configure Firebase URL";
+        return;
+      }
+
+      try {
+        const app = initializeApp({ databaseURL: url });
+        const database = getDatabase(app);
+        const latestRef = ref(database, 'latest');
+
+        document.getElementById('connectionText').innerText = "Listening for packets...";
+
+        onValue(latestRef, (snapshot) => {
+          const data = snapshot.val();
+          if (data) {
+            lastPacketTimestamp = Date.now();
+            updateDashboard(data);
+          }
+        }, (err) => {
+          console.error(err);
+          document.getElementById('connectionPill').className = "flex items-center gap-2 px-3 py-1.5 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold";
+          document.getElementById('connectionText').innerText = "Firebase Connection Error";
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function updateDashboard(data) {
+      const v = parseFloat(data.avgVoltage || 0).toFixed(2);
+      const i = parseFloat(data.avgCurrent || 0).toFixed(2);
+      const soc = parseFloat(data.soc || 0).toFixed(1);
+      const t = parseFloat(data.avgTemperature || 0).toFixed(1);
+      const pwm = parseFloat(data.avgPWM || 0).toFixed(0);
+      const wh = parseFloat(data.energyWh || 0).toFixed(2);
+      const min = parseFloat(data.chargeMinutes || 0).toFixed(1);
+
+      document.getElementById('avgVoltage').innerText = v;
+      document.getElementById('avgCurrent').innerText = i;
+      document.getElementById('socValue').innerText = soc + "%";
+      document.getElementById('avgTemp').innerText = t;
+      document.getElementById('avgPWM').innerText = pwm;
+      document.getElementById('energyWh').innerText = wh;
+      document.getElementById('chargeMinutes').innerText = min;
+      document.getElementById('chargeMode').innerText = data.chargeMode || "UNKNOWN";
+
+      // Battery Bar & SOC Badge
+      const socNum = parseFloat(soc);
+      document.getElementById('socBar').style.width = Math.min(100, Math.max(0, socNum)) + "%";
+      const socBadge = document.getElementById('socBadge');
+      if (socNum > 80) {
+        socBadge.innerText = "FULL / FLOAT";
+        socBadge.className = "text-xs px-2.5 py-1 rounded-full font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
+      } else if (socNum > 25) {
+        socBadge.innerText = "HEALTHY";
+        socBadge.className = "text-xs px-2.5 py-1 rounded-full font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30";
+      } else {
+        socBadge.innerText = "LOW BATTERY";
+        socBadge.className = "text-xs px-2.5 py-1 rounded-full font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30";
+      }
+
+      // Fault details
+      const faults = parseInt(data.faults || 0);
+      const warns = parseInt(data.warnings || 0);
+      const faultBadge = document.getElementById('systemFaultBadge');
+      if (faults > 0) {
+        faultBadge.innerText = "CRITICAL FAULT";
+        faultBadge.className = "text-xl font-bold text-rose-500";
+      } else if (warns > 0) {
+        faultBadge.innerText = "WARNING";
+        faultBadge.className = "text-xl font-bold text-amber-400";
+      } else {
+        faultBadge.innerText = "ALL NORMAL";
+        faultBadge.className = "text-xl font-bold text-emerald-400";
+      }
+      document.getElementById('faultDetail').innerText = `${faults} Faults • ${warns} Warnings`;
+
+      // Inspector metadata
+      document.getElementById('pktTime').innerText = data.timestamp || "—";
+      document.getElementById('pktVBounds').innerText = `Min: ${data.minVoltage || '—'}V | Max: ${data.maxVoltage || '—'}V`;
+      document.getElementById('pktTempRise').innerText = (data.tempRiseC || 0) + " °C";
+      document.getElementById('pktVErr').innerText = (data.maxVoltError || 0) + " V";
+      document.getElementById('pktFw').innerText = data.firmware || "V13";
+
+      // Append point to Chart
+      const timeLabel = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      if (telemetryChart.data.labels.length >= maxPoints) {
+        telemetryChart.data.labels.shift();
+        telemetryChart.data.datasets[0].data.shift();
+        telemetryChart.data.datasets[1].data.shift();
+      }
+      telemetryChart.data.labels.push(timeLabel);
+      telemetryChart.data.datasets[0].data.push(v);
+      telemetryChart.data.datasets[1].data.push(i);
+      telemetryChart.update();
+    }
+
+    // Heartbeat monitoring every second
+    setInterval(() => {
+      if (!lastPacketTimestamp) return;
+      const elapsedSec = Math.floor((Date.now() - lastPacketTimestamp) / 1000);
+      const pill = document.getElementById('connectionPill');
+      const text = document.getElementById('connectionText');
+
+      if (elapsedSec <= 15) {
+        pill.className = "flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold";
+        text.innerText = `● LIVE STREAM (${elapsedSec}s ago)`;
+      } else if (elapsedSec <= 60) {
+        pill.className = "flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold";
+        text.innerText = `● AWAITING STREAM (${elapsedSec}s ago)`;
+      } else {
+        pill.className = "flex items-center gap-2 px-3 py-1.5 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold";
+        text.innerText = `● BMS OFFLINE (${Math.floor(elapsedSec/60)}m ago)`;
+      }
+    }, 1000);
+
+    // Modal helpers
+    window.openConfigModal = function() {
+      document.getElementById('configModal').classList.remove('hidden');
+    };
+    window.closeConfigModal = function() {
+      document.getElementById('configModal').classList.add('hidden');
+    };
+    window.saveConfig = function() {
+      const url = document.getElementById('inputDbUrl').value.trim();
+      if (url) {
+        localStorage.setItem('bms_firebase_url', url);
+        window.location.reload();
+      }
+    };
+
+    // Auto start
+    if (savedUrl && !savedUrl.includes("your-project-id")) {
+      initFirebase(savedUrl);
+    } else {
+      openConfigModal();
+    }
+  </script>
+</body>
+</html>
